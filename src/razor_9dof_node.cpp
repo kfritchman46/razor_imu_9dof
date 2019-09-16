@@ -47,9 +47,9 @@ float bytesToFloat(char *buffer, bool endianness) {
     buf3[1]=buffer[2];
     buf3[2]=buffer[1];
     buf3[3]=buffer[0];
-    memcpy(&val,&buf3,sizeof(float));
+    memcpy(&val,buf3,4);
   } else {
-    memcpy(&val,&buffer,sizeof(float));
+    memcpy(&val,buffer,4);
   }
   return val;
 }
@@ -118,7 +118,10 @@ int main(int argc, char **argv)
 
   sensor_msgs::Imu msg;
   msg.header.frame_id = "im an imu";
-
+  msg.orientation_covariance[0] = -1;
+  msg.angular_velocity_covariance[0] = -1;
+  msg.linear_acceleration_covariance[0] = -1;
+  int seq = 0;
 
   // Message static data
   int toRead;
@@ -157,19 +160,19 @@ int main(int argc, char **argv)
 
     if(found){
       // Found the start bytes
-      ROS_INFO("FOUND");
+      //ROS_INFO("FOUND");
       //Read CRC
       toRead=2;
       do {
         toRead -= read(serial_device, &crc+(2-toRead), toRead);
       } while(toRead > 0);
-      ROS_INFO("GOT CRC %d %d", (int) crc[0], (int) crc[1]);
+      //ROS_INFO("GOT CRC %d %d", (int) crc[0], (int) crc[1]);
       // Read msg_len
       toRead=1;
       do {
         toRead -= read(serial_device, &len+(1-toRead), toRead);
       } while(toRead > 0);
-      ROS_INFO("GOT LEN %d",(int) len);
+      //ROS_INFO("GOT LEN %d",(int) len);
       // Read Full Message
       toRead=(int) len;
       do {
@@ -194,7 +197,6 @@ int main(int argc, char **argv)
         if(message[i]==0x1)
         {
           float val=bytesToFloat(message+i+1+0*sizeof(float), false);
-          ROS_INFO("%f",val);
           msg.orientation.w = (double) val;
           val=bytesToFloat(message+i+1+1*sizeof(float), false);
           msg.orientation.x = (double) val;
@@ -212,6 +214,12 @@ int main(int argc, char **argv)
         // Accel
         else if(message[i]==0x4)
         {
+          float val=bytesToFloat(message+i+1+0*sizeof(float), false);
+          msg.linear_acceleration.x = (double) val;
+          val=bytesToFloat(message+i+1+1*sizeof(float), false);
+          msg.linear_acceleration.y = (double) val;
+          val=bytesToFloat(message+i+1+2*sizeof(float), false);
+          msg.linear_acceleration.z = (double) val;
           i+=3*sizeof(float);
         }
         // Magn
@@ -225,7 +233,10 @@ int main(int argc, char **argv)
           i+=1*sizeof(long);
         }
       }
+      msg.header.stamp = ros::Time::now();
+      msg.header.seq = seq;
       imu_topic.publish(msg);
+      seq++;
     }
   }
 
