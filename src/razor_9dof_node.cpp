@@ -113,55 +113,118 @@ int main(int argc, char **argv)
   std::memset(read_buf, '\0', sizeof(read_buf));
   int track_ptr = 0;
 
-  char start_key[] = "Q|float";
+  char start_key[] = {0xFF, 0xF0, 0x00};
   char buf='\0';
 
   sensor_msgs::Imu msg;
   msg.header.frame_id = "im an imu";
 
+
+  // Message static data
+  int toRead;
+  int haveRead;
+  char crc[2];
+  char my_crc;
+  char len;
+  char message[256];
+
+  bool found;
+  int tries;
   while(ros::ok())
   {
     //Search for the start byte
-    bool found=true;
-    for(int i=0; i< strlen(start_key);i++)
+    found=false;
+    tries=0;
+    for(int i=0; i<3;i++)
     {
       read(serial_device, &buf, 1);
-      if(buf==start_key[i]){
-        found=true;
-        //ROS_INFO("FINDING %c",start_key[i]);
-        continue;
+      if(buf==start_key[i])
+      {
+        if(i==strlen(start_key)-1)
+        {
+          found=true;
+        }
       }
-      if(buf==start_key[0]) {
-        i=0;
-      } else {
-        i=-1;
-        found=false;
+      else
+      {
+        tries++;
+        if(i==0 && tries > 100)
+        {
+          break;
+        }
       }
     }
 
     if(found){
+      // Found the start bytes
       ROS_INFO("FOUND");
-      char bytes_per_float;
-      char floats;
-      read(serial_device, &bytes_per_float, 1);
-      read(serial_device, &floats, 1);
-      ROS_INFO("%d",(int)floats);
-      int toRead = sizeof(float)*floats;
-      int haveRead = 0;
-      char buf2[toRead];
+      //Read CRC
+      toRead=2;
       do {
-        int bytesIn = read(serial_device, buf2+haveRead, toRead-haveRead);
-        haveRead += bytesIn;
-      } while(haveRead < toRead);
-      float val = bytesToFloat(buf2+0*sizeof(float),false);
-      ROS_INFO("%f",val);
-      msg.orientation.w = (double) val;
-      val = bytesToFloat(buf2+1*sizeof(float),true);
-      msg.orientation.x = (double) val;
-      val = bytesToFloat(buf2+2*sizeof(float),true);
-      msg.orientation.y = (double) val;
-      val = bytesToFloat(buf2+3*sizeof(float),true);
-      msg.orientation.z = (double) val;
+        toRead -= read(serial_device, &crc+(2-toRead), toRead);
+      } while(toRead > 0);
+      ROS_INFO("GOT CRC %d %d", (int) crc[0], (int) crc[1]);
+      // Read msg_len
+      toRead=1;
+      do {
+        toRead -= read(serial_device, &len+(1-toRead), toRead);
+      } while(toRead > 0);
+      ROS_INFO("GOT LEN %d",(int) len);
+      // Read Full Message
+      toRead=(int) len;
+      do {
+        toRead -= read(serial_device, &message+(len-toRead), toRead);
+      } while(toRead > 0);
+      ROS_INFO("GOT MSG");
+      // compare simple crc
+      my_crc = 0;
+      for(int i=0; i<len;i++)
+      {
+        my_crc |= message[i];
+      }
+      if(my_crc != crc[1])
+      {
+        ROS_INFO("message corrupt");
+        continue;
+      }
+
+      for(int i=0;i<len;i++)
+      {
+        // Quaternion
+        if(message[i]==0x1)
+        {
+          float val=bytesToFloat(message+i+1+0*sizeof(float), false);
+          ROS_INFO("%f",val);
+          msg.orientation.w = (double) val;
+          val=bytesToFloat(message+i+1+1*sizeof(float), false);
+          msg.orientation.x = (double) val;
+          val=bytesToFloat(message+i+1+2*sizeof(float), false);
+          msg.orientation.y = (double) val;
+          val=bytesToFloat(message+i+1+3*sizeof(float), false);
+          msg.orientation.z = (double) val;
+          i+=4*sizeof(float);
+        }
+        // Gyro
+        else if(message[i]==0x2)
+        {
+          i+=3*sizeof(float);
+        }
+        // Accel
+        else if(message[i]==0x4)
+        {
+          i+=3*sizeof(float);
+        }
+        // Magn
+        else if(message[i]==0x6)
+        {
+          i+=3*sizeof(float);
+        }
+        // Time
+        else if(message[i]==0x8)
+        {
+          i+=1*sizeof(long);
+        }
+      }
       imu_topic.publish(msg);
     }
   }
