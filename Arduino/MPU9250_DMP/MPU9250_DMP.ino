@@ -119,16 +119,39 @@ void loop()
   }
 }
 
-void write_float_bytes(String label, float* data, int _len)
+
+byte message[256];
+byte msgStart[3] = {0xFF, 0xF0, 0x00};
+
+byte calculate_checksum(byte *message, int _len)
 {
-  SerialPort.print(label+"|float"+(char) sizeof(float)+(char) _len);
-  SerialPort.write((byte *) data, sizeof(float)*_len);
+  byte checksum = 0;
+  for(int i=0; i< _len; i++)
+  {
+    checksum |= message[i];
+  }
+  return checksum;
 }
 
-void write_ulong_bytes(String label, long unsigned int* data, int _len)
+//Sub messages  Label   Data Type   Length Values
+//              1 byte  1 byte      1 byte Length*Type_Length
+int add_sub_to_message(byte *message, int _mlen, byte label, byte * data, int _dlen)
 {
-  SerialPort.print(label+"|uint"+(char) sizeof(data[0])+(char) _len);
-  SerialPort.write((byte *) data, sizeof(data[0])*_len);
+  memcpy(message+_mlen, &label, 1);
+  memcpy(message+_mlen+1,data,_dlen);
+  return _mlen+_dlen+1;
+}
+
+//Total message contents Start    checksum  Length  Message
+//                       3 bytes  2 bytes   1 byte  1-256 bytes
+void send_message(byte *message, int _mlen)
+{
+  byte cs[2] = {0x0, 0x0};
+  cs[1] = calculate_checksum(message, _mlen);
+  SerialPort.write(msgStart, 3);
+  SerialPort.write(cs, 2);
+  SerialPort.write((byte) _mlen);
+  SerialPort.write(message, _mlen);
 }
 
 void printIMUDataBytes(void)
@@ -153,15 +176,26 @@ void printIMUDataBytes(void)
   accel[1] = imu.calcAccel(imu.ay);
   accel[2] = imu.calcAccel(imu.az);
 
-//  SerialPort.println("Q: " + String(quat[0], 4) + ", " +
-//                    String(quat[1], 4) + ", " + String(quat[2], 4) + 
-//                    ", " + String(quat[3], 4));
-  write_float_bytes("Q",quat,4);
-//  SerialPort.println("R/P/Y: " + String(imu.roll) + ", "
-//            + String(imu.pitch) + ", " + String(imu.yaw));
-  write_float_bytes("RPY",rpy,3);
-//  SerialPort.println("X/Y/Z Accel: " + String(accelX, 4) + ", "
-//            + String(accelY, 4) + ", " + String(accelZ, 4));
-  write_float_bytes("A",accel,3);
-  write_ulong_bytes("T",&imu.time, 1);
+  
+  memset(message, 0, sizeof(message));
+  int msg_len = 0;
+
+  // Sub Message Labels
+  // 0x0 Message
+  // 0x1 Quaternion
+  // 0x2 Gyro
+  // 0x4 Accel
+  // 0x6 Magn
+  // 0x8 Time
+  // Sub Message Types
+  // 0x0 Byte
+  // 0x1 Int
+  // 0x2 Float
+  
+  msg_len = add_sub_to_message(message, msg_len, 0x1, (byte *) quat, 4*sizeof(quat[0]));
+  msg_len = add_sub_to_message(message, msg_len, 0x2, (byte *) rpy, 3*sizeof(rpy[0]));
+  msg_len = add_sub_to_message(message, msg_len, 0x4, (byte *) accel, 3*sizeof(accel[0]));
+  msg_len = add_sub_to_message(message, msg_len, 0x8, (byte *) &imu.time, 1*sizeof(imu.time));
+
+  send_message(message, msg_len);
 }
