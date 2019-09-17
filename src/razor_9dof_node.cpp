@@ -98,7 +98,7 @@ int main(int argc, char **argv)
   tty.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
   tty.c_oflag &= ~ONLCR; // Prevent conversion of newline to carriage return/line feed
 
-  tty.c_cc[VTIME] = 0;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
+  tty.c_cc[VTIME] = 10;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
   tty.c_cc[VMIN] = 1;
 
   cfsetispeed(&tty, B115200);
@@ -110,11 +110,8 @@ int main(int argc, char **argv)
   }
 
   char read_buf[256];
-  std::memset(read_buf, '\0', sizeof(read_buf));
+  std::memset(read_buf, 0, 256);
   int track_ptr = 0;
-
-  char start_key[] = {0xFF, 0xF0, 0x00};
-  char buf='\0';
 
   sensor_msgs::Imu msg;
   msg.header.frame_id = "im an imu";
@@ -131,54 +128,56 @@ int main(int argc, char **argv)
   char len;
   char message[256];
 
+  char start_key[] = {0xFF, 0xF0, 0x00};
+  char buf[] = {0,0,0};
+
   bool found;
   int tries;
   while(ros::ok())
   {
     //Search for the start byte
+    std::memset(buf,0,3);
     found=false;
-    tries=0;
-    for(int i=0; i<3;i++)
+    while(!found && ros::ok())
     {
-      read(serial_device, &buf, 1);
-      if(buf==start_key[i])
+      if(read(serial_device, buf+2, 1) > 0)
       {
-        if(i==strlen(start_key)-1)
+        //Compare to packetstart sequence
+        found=true;
+        for(int i=0;i<3;i++)
         {
-          found=true;
+          if(start_key[i]!=buf[i])
+          {
+            found=false;
+          }
         }
+        //Shift buffer for new value
+        buf[0]=buf[1];
+        buf[1]=buf[2];
       }
       else
       {
-        tries++;
-        if(i==0 && tries > 100)
-        {
-          break;
-        }
+        ROS_INFO("failed to read trying again");
       }
     }
 
     if(found){
       // Found the start bytes
-      //ROS_INFO("FOUND");
       //Read CRC
       toRead=2;
       do {
         toRead -= read(serial_device, &crc+(2-toRead), toRead);
-      } while(toRead > 0);
-      //ROS_INFO("GOT CRC %d %d", (int) crc[0], (int) crc[1]);
+      } while(toRead > 0 && ros::ok());
       // Read msg_len
       toRead=1;
       do {
         toRead -= read(serial_device, &len+(1-toRead), toRead);
-      } while(toRead > 0);
-      //ROS_INFO("GOT LEN %d",(int) len);
+      } while(toRead > 0 && ros::ok());
       // Read Full Message
       toRead=(int) len;
       do {
         toRead -= read(serial_device, &message+(len-toRead), toRead);
       } while(toRead > 0);
-      ROS_INFO("GOT MSG");
       // compare simple crc
       my_crc = 0;
       for(int i=0; i<len;i++)
@@ -238,6 +237,7 @@ int main(int argc, char **argv)
       imu_topic.publish(msg);
       seq++;
     }
+    ros::spinOnce();
   }
 
   close(serial_device);
