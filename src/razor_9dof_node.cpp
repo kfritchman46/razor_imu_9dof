@@ -114,7 +114,7 @@ int main(int argc, char **argv)
   int track_ptr = 0;
 
   sensor_msgs::Imu msg;
-  msg.header.frame_id = "im an imu";
+  msg.header.frame_id = "imu_frame";
   msg.orientation_covariance[0] = -1;
   msg.angular_velocity_covariance[0] = -1;
   msg.linear_acceleration_covariance[0] = -1;
@@ -182,11 +182,13 @@ int main(int argc, char **argv)
       my_crc = 0;
       for(int i=0; i<len;i++)
       {
-        my_crc |= message[i];
+        my_crc ^= message[i];
       }
       if(my_crc != crc[1])
       {
         ROS_INFO("message corrupt");
+        ROS_INFO("my_crc: %u", my_crc);
+        ROS_INFO("crc:    %u", crc[1]);
         continue;
       }
 
