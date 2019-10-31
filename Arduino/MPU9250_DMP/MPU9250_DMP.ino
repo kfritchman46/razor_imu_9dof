@@ -12,7 +12,7 @@ Supported Platforms:
 
 #define SerialPort SerialUSB
 
-//#define STATUS_LED_PIN 13
+#define STATUS_LED_PIN 13
 
 MPU9250_DMP imu;
 
@@ -21,8 +21,10 @@ boolean output_single_on;
 
 void setup() 
 {
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  
   SerialPort.begin(115200);
-  output_stream_on=true;
+  output_stream_on=false;
   output_single_on=false;
 
   // Call imu.begin() to verify communication and initialize
@@ -37,8 +39,8 @@ void setup()
     }
   }
 
-  imu.setAccelFSR(4);
-  imu.setGyroFSR(1000); // Set gyro to 1000 dps
+//  imu.setAccelFSR(4);
+//  imu.setGyroFSR(1000); // Set gyro to 1000 dps
   
   
   imu.dmpBegin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
@@ -49,6 +51,7 @@ void setup()
   // DMP_FEATURE_LP_QUAT can also be used. It uses the 
   // accelerometer in low-power mode to estimate quat's.
   // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
+  turn_output_stream_on();
 }
 
 char readChar()
@@ -60,13 +63,13 @@ char readChar()
 void turn_output_stream_on()
 {
   output_stream_on = true;
-  //digitalWrite(STATUS_LED_PIN, HIGH);
+  digitalWrite(STATUS_LED_PIN, HIGH);
 }
 
 void turn_output_stream_off()
 {
   output_stream_on = false;
-  //digitalWrite(STATUS_LED_PIN, LOW);
+  digitalWrite(STATUS_LED_PIN, LOW);
 }
 
 void loop() 
