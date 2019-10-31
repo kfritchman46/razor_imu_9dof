@@ -1,3 +1,4 @@
+
 /************************************************************
 Development environment specifics:
 Arduino IDE 1.6.12
@@ -35,11 +36,16 @@ void setup()
       delay(5000);
     }
   }
+
+  imu.setAccelFSR(4);
+  imu.setGyroFSR(1000); // Set gyro to 1000 dps
+  
   
   imu.dmpBegin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
                DMP_FEATURE_GYRO_CAL | // Use gyro calibration
+               DMP_FEATURE_SEND_CAL_GYRO | // Send cal'd gyro values
                DMP_FEATURE_SEND_RAW_ACCEL, //Get Acceleration as well
-              100); // Set DMP FIFO rate to 10 Hz
+              100); // Set DMP FIFO rate to 100 Hz
   // DMP_FEATURE_LP_QUAT can also be used. It uses the 
   // accelerometer in low-power mode to estimate quat's.
   // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
@@ -128,7 +134,7 @@ byte calculate_checksum(byte *message, int _len)
   byte checksum = 0;
   for(int i=0; i< _len; i++)
   {
-    checksum |= message[i];
+    checksum ^= message[i];
   }
   return checksum;
 }
@@ -165,6 +171,8 @@ void printIMUDataBytes(void)
   quat[1] = imu.calcQuat(imu.qx);
   quat[2] = imu.calcQuat(imu.qy);
   quat[3] = imu.calcQuat(imu.qz);
+
+  
 
   float rpy[3];
   rpy[0] = imu.roll;
