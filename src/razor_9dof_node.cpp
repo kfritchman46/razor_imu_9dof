@@ -61,7 +61,12 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "razor_9dof");
   ros::NodeHandle n;
   std::string node_name;
-  node_name="default";
+  n.param("name", node_name, "default");
+  if(node_name.find(" ")!=std::string::npos)
+  {
+    ROS_INFO("node name cannot have spaces");
+    return 1;
+  }
   ros::Publisher imu_topic = n.advertise<sensor_msgs::Imu>("imu/"+node_name, 500);
 
   // Serial Device setup
